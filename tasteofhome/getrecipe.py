@@ -3,7 +3,7 @@
 #   and combining them into a csv file                                         #
 #                                                                              #
 #   Written by: Jeremy Heckt, Let's Eat Labs - Scientist                       #
-#   June, 2020, LC, Seattle, WA                                                #
+#   July, 2020, LC, Seattle, WA                                                #
 ################################################################################
 
 import importlib
@@ -16,7 +16,7 @@ page_base = "https://www.tasteofhome.com/search/index?search=&page="
 
 # Open our list of recipes
 test_recipe_list = open("test_recipes.txt", "r")
-real_recipe_list = open("recipes_urls.txt", "r")
+real_recipe_list = open("production_recipes_urls.txt", "r")
 
 ####################
 
@@ -47,12 +47,43 @@ def getfullingredients(url):
     for ingredient in url_recipe:
         for line in ingredient.find_all("li"):
             ingredient_list.append(line.text)
-    return ",".join(ingredient_list).replace(":,",": ")
+    return ",".join(ingredient_list)#.replace(":,",": ")
+
+####################
+
+####################
+
+def recipeprettify(recipe_string):
+    """
+    Takes comma separated recipe string returned by getfullingredients()
+    and returns an object with recipe and sub-recipe, if applicable.
+
+    "Optional:" ingredients are to be put into the sub-recipe field, but not
+    ingredients listed in the main portion as optional. Note the difference:
+        "Optional: " <--- subrecipe
+        "walnuts, optional" <--- main recipe
+    """
+    split_str = recipe_string.split(",")
+    recipe_obj = {}
+
+    if ":" in recipe_string:
+        colon_index = 0
+        sub_recipes = []
+        for r in split_str:
+            if ":" in r:
+                colon_index = split_str.index(r)
+                sub_recipes = split_str[colon_index:] 
+                break # Break so we get ALL sub recipes in one spot
+        recipe_obj["recipe"] = split_str[:colon_index]
+        recipe_obj["subrecipes"] = sub_recipes
+    else:
+        recipe_obj["recipe"] = split_str
+    return recipe_obj
 
 ####################
 
 for url in test_recipe_list.readlines():
-    print(getfullingredients(url))
+    print(recipeprettify(getfullingredients(url)))
 
 
 
