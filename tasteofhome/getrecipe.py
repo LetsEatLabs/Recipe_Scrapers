@@ -7,6 +7,7 @@
 ################################################################################
 
 import importlib
+import json
 
 # Get our other file so we do not have to re-write code
 getlinks = importlib.import_module("getlinks")
@@ -20,7 +21,7 @@ real_recipe_list = open("production_recipes_urls.txt", "r")
 
 ####################
 
-def extractrecipe(soup, target_class, target_type):
+def extractfromrecipe(soup, target_class, target_type):
     return soup.find_all(target_type, {"class": target_class})
 
 ####################
@@ -34,20 +35,63 @@ def cleanrecipeline(line_text):
 
 ####################
 
-def getfullingredients(url):
+def getrecipetitle(url_soup):
+    return extractfromrecipe(url_soup, "recipe-title", "h1")[0].text
+
+####################
+
+####################
+
+def getrecipenutrition(url_soup):
+    nutr_obj = {}
+
+    nutrition = extractfromrecipe(url_soup, 
+                    "recipe-nutrition-facts",
+                    "div")[0].text
+    nutrition = nutrition.strip().replace("Nutrition Facts\n\t\t", "")
+
+    nutrition_split = nutrition.split(":")
+
+    nutr_obj["portion"] = nutrition_split[0]
+    nutr_obj["facts"] = [x.strip() for x in nutrition_split[1][:-1].split(",")]
+    #[:-1] to remove trailing period
+
+    return nutr_obj
+
+####################
+
+####################
+
+def getfulldirections(url_soup):
+    """
+    Returns an object of all the directions
+    """
+    recipe_directions = extractfromrecipe(url_soup, 
+                            "recipe-directions__item", 
+                            "li")
+    recipe_list = [x.text.strip() for x in recipe_directions]
+
+    return recipe_list
+
+####################
+
+####################
+
+def getfullingredients(url_soup):
     """
     Returns an string of all recipe ingredients and the sub recipes if present
     comma separated
     """
-    url_soup = getlinks.getpage(url)
-    url_recipe = extractrecipe(url_soup, 
+    url_recipe = extractfromrecipe(url_soup, 
                     "recipe-ingredients__collection", 
                     "ul")
     ingredient_list = []
     for ingredient in url_recipe:
         for line in ingredient.find_all("li"):
             ingredient_list.append(line.text)
-    return ",".join(ingredient_list)#.replace(":,",": ")
+
+    # Do not use commas as they use them!
+    return "|".join(ingredient_list)#.replace(":,",": ")
 
 ####################
 
@@ -63,7 +107,7 @@ def recipeprettify(recipe_string):
         "Optional: " <--- subrecipe
         "walnuts, optional" <--- main recipe
     """
-    split_str = recipe_string.split(",")
+    split_str = recipe_string.split("|") # Do not use commas as they use them!
     recipe_obj = {}
 
     if ":" in recipe_string:
@@ -82,13 +126,23 @@ def recipeprettify(recipe_string):
 
 ####################
 
-for url in test_recipe_list.readlines():
-    print(recipeprettify(getfullingredients(url)))
+
+if __name__ == "__main__":
+    for url in test_recipe_list.readlines():
+        url_soup = getlinks.getpage(url)
+
+        recipe_obj = recipeprettify(getfullingredients(url_soup))
+        recipe_obj["directions"] = getfulldirections(url_soup)
+        recipe_obj["title"] = getrecipetitle(url_soup)
+        recipe_obj["nutrition"] = getrecipenutrition(url_soup)
+        recipe_obj["url"] = url.strip()
+        recipe_obj["source"] = "Taste Of Home"
+
+        print(json.dumps(recipe_obj, ensure_ascii=False))
 
 
-
-
-
+# To Do Next
+# split sub recipes into actual subobjects for clarity. (we can leave as arrays)
 
 
 
