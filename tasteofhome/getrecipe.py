@@ -28,7 +28,7 @@ real_recipe_list = open("production_recipes_urls.txt", "r")
 save_dir = "./json/"
 
 # Logfile
-log_file = open("./getrecipe.log", "a")
+log_file = "./getrecipe.log"
 
 ####################
 
@@ -182,7 +182,9 @@ def writerecipe(write_file, recipe_obj, recipe_count):
 ####################
 
 def logwritter(log_file, string_message):
-    log_file.write(f"{datetime.datetime.now()}|{string_message}\n")
+    lf = open(log_file, "a")
+    lf.write(f"{datetime.datetime.now()}|{string_message}\n")
+    lf.close()
 
 ####################
 
