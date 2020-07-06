@@ -108,7 +108,30 @@ def getfullingredients(url_soup):
 
 ####################
 
-#def cleansubrecipe(sub_recipe_list):
+def cleansubrecipe(sub_recipe_list):
+    title_inds = [sub_recipe_list.index(x) for x in sub_recipe_list if ":" in x]
+    sub_recipe_obj = {}
+
+    sub_recipe_array = []
+    for i in range(len(title_inds)):
+        if title_inds[i] == title_inds[-1]:
+            sub_recipe_array.append(sub_recipe_list[title_inds[i]:])
+        else:
+            sub_recipe_array.append(sub_recipe_array[title_inds[i]:title_inds[i+1]])
+
+
+    for sr in sub_recipe_array:
+
+        # Weird edge cases of Optional sub recipes
+        if sr[:9] == "Optional:":
+            sub_title = "Optional:"
+            sub_recipe_obj[sub_title] = sr[9:]
+
+        else:
+            sub_title = sr[0].replace(":","")
+            sub_recipe_obj[sub_title] = sr[1:] # Skip the title easily
+
+    return sub_recipe_obj
 
 
 ####################
@@ -137,7 +160,7 @@ def recipeprettify(recipe_string):
                 sub_recipes = split_str[colon_index:] 
                 break # Break so we get ALL sub recipes in one spot
         recipe_obj["recipe"] = split_str[:colon_index]
-        recipe_obj["subrecipes"] = sub_recipes
+        recipe_obj["subrecipes"] = cleansubrecipe(sub_recipes)
     else:
         recipe_obj["recipe"] = split_str
     return recipe_obj
@@ -202,7 +225,6 @@ if __name__ == "__main__":
 
 # To Do Next
 # split sub recipes into actual subobjects for clarity. (we can leave as arrays)
-# Save each to an individual JSON file
 # Write a script that will take all JSON files in a dir and make a giant file
 
 
