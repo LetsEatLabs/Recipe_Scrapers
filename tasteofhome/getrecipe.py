@@ -8,6 +8,8 @@
 
 import importlib
 import json
+import os
+import datetime
 
 # Get our other file so we do not have to re-write code
 getlinks = importlib.import_module("getlinks")
@@ -15,9 +17,18 @@ getlinks = importlib.import_module("getlinks")
 # Define some stuff
 page_base = "https://www.tasteofhome.com/search/index?search=&page="
 
+# Source
+target_source = "Taste Of Home"
+
 # Open our list of recipes
 test_recipe_list = open("test_recipes.txt", "r")
 real_recipe_list = open("production_recipes_urls.txt", "r")
+
+# Target save directory
+save_dir = "./json/"
+
+# Logfile
+log_file = open("./getrecipe.log", "a")
 
 ####################
 
@@ -97,6 +108,13 @@ def getfullingredients(url_soup):
 
 ####################
 
+#def cleansubrecipe(sub_recipe_list):
+
+
+####################
+
+####################
+
 def recipeprettify(recipe_string):
     """
     Takes comma separated recipe string returned by getfullingredients()
@@ -126,9 +144,48 @@ def recipeprettify(recipe_string):
 
 ####################
 
+####################
+
+def writerecipe(write_file, recipe_obj, recipe_count):
+    """
+    Saves recipe
+    """
+
+    with open(write_file, "w") as f:
+        f.write(json.dumps(recipe_obj, ensure_ascii=False))
+
+####################
+
+####################
+
+def logwritter(log_file, string_message):
+    log_file.write(f"{datetime.datetime.now()}|{string_message}\n")
+
+####################
+
+####################
+
 
 if __name__ == "__main__":
-    for url in test_recipe_list.readlines():
+    recipe_url_list = test_recipe_list.readlines()
+    total_recipes = len(recipe_url_list)
+
+    existing_recipes = os.listdir(save_dir)
+
+    total_recipes = 0
+
+    for url in recipe_url_list: 
+        write_file = f"{save_dir}{target_source.replace(' ', '')}-{total_recipes}.json"
+
+        ############ # Check if recipe already exists. If it does, skip.
+        direct_file_name = write_file[7:]
+
+        if direct_file_name in existing_recipes:
+            logwritter(log_file, f"{direct_file_name} is already saved, skipping...")
+            total_recipes += 1
+            continue
+        ############
+
         url_soup = getlinks.getpage(url)
 
         recipe_obj = recipeprettify(getfullingredients(url_soup))
@@ -136,14 +193,17 @@ if __name__ == "__main__":
         recipe_obj["title"] = getrecipetitle(url_soup)
         recipe_obj["nutrition"] = getrecipenutrition(url_soup)
         recipe_obj["url"] = url.strip()
-        recipe_obj["source"] = "Taste Of Home"
-
-        print(json.dumps(recipe_obj, ensure_ascii=False))
+        recipe_obj["source"] = target_source
+        
+        writerecipe(write_file, recipe_obj, total_recipes)
+        logwritter(log_file, f"{direct_file_name} is written")
+        total_recipes += 1
 
 
 # To Do Next
 # split sub recipes into actual subobjects for clarity. (we can leave as arrays)
-
+# Save each to an individual JSON file
+# Write a script that will take all JSON files in a dir and make a giant file
 
 
 
