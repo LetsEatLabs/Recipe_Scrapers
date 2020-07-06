@@ -188,8 +188,6 @@ def logwritter(log_file, string_message):
 
 ####################
 
-####################
-
 
 if __name__ == "__main__":
     logwritter(log_file, "Starting run")
