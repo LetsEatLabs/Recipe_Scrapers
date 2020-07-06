@@ -190,6 +190,8 @@ def logwritter(log_file, string_message):
 
 
 if __name__ == "__main__":
+    logwritter(log_file, "Starting run")
+
     recipe_url_list = test_recipe_list.readlines()
     total_recipes = len(recipe_url_list)
 
@@ -197,31 +199,38 @@ if __name__ == "__main__":
 
     total_recipes = 0
 
-    for url in recipe_url_list: 
+    for url in recipe_url_list:
+
+        clean_url = url.strip()
         write_file = f"{save_dir}{target_source.replace(' ', '')}-{total_recipes}.json"
 
         ############ # Check if recipe already exists. If it does, skip.
         direct_file_name = write_file[7:]
 
         if direct_file_name in existing_recipes:
-            logwritter(log_file, f"{direct_file_name} is already saved, skipping...")
+            logwritter(log_file, f"{direct_file_name} is already saved, skipping {clean_url}")
             total_recipes += 1
             continue
         ############
+        try:
+            url_soup = getlinks.getpage(url)
 
-        url_soup = getlinks.getpage(url)
+            recipe_obj = recipeprettify(getfullingredients(url_soup))
+            recipe_obj["directions"] = getfulldirections(url_soup)
+            recipe_obj["title"] = getrecipetitle(url_soup)
+            recipe_obj["nutrition"] = getrecipenutrition(url_soup)
+            recipe_obj["url"] = url.strip()
+            recipe_obj["source"] = target_source
+            
+            writerecipe(write_file, recipe_obj, total_recipes)
+            logwritter(log_file, f"Success! Fetched url: {clean_url}")
+            logwritter(log_file, f"{direct_file_name} is written")
+            total_recipes += 1
+        except:
+            logwritter(log_file, f"Error getting url: {clean_url}")
+            total_recipes += 1
 
-        recipe_obj = recipeprettify(getfullingredients(url_soup))
-        recipe_obj["directions"] = getfulldirections(url_soup)
-        recipe_obj["title"] = getrecipetitle(url_soup)
-        recipe_obj["nutrition"] = getrecipenutrition(url_soup)
-        recipe_obj["url"] = url.strip()
-        recipe_obj["source"] = target_source
-        
-        writerecipe(write_file, recipe_obj, total_recipes)
-        logwritter(log_file, f"{direct_file_name} is written")
-        total_recipes += 1
-
+    logwritter(log_file, f"Complete! There are {total_recipes} in {save_dir}")
 
 # To Do Next
 # split sub recipes into actual subobjects for clarity. (we can leave as arrays)
