@@ -1,5 +1,5 @@
 ################################################################################
-#   Script for getting all recipe URLS from foodnetwork.com                    #
+#   Script for getting all recipe URLS from tasteofhome.com                    #
 #   and combining them into a text file                                        #
 #                                                                              #
 #   Written by: Jeremy Heckt, Let's Eat Labs - Scientist                       #
@@ -60,13 +60,13 @@ if __name__ == "__main__":
     current_page = getpage(f"{page_base}{page_counter}{custom_facet}")
     total_pages = gettotalpages(current_page)
 
-    for i in range(page_counter, 5):
+    for i in range(page_counter, int(total_pages)):
 
         current_page = getpage(f"{page_base}{i}{custom_facet}")
         current_page_recipe_list = getrecipeurls(current_page)
 
         for recipe in current_page_recipe_list:
-            f = open("./fn_recipes_urls.txt", "a")
+            f = open("fn_testing_recipes_urls.txt", "a")
             f.write(recipe)
             f.write("\n")
             f.close()
