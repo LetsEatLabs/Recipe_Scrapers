@@ -25,6 +25,13 @@ func loadFileLines(filename string) []string {
 //func getUrlContent(url string) {}
 
 func main() {
+
+	// Check for filename argument
+	if len(os.Args) != 2 {
+		fmt.Println("You need to pass a single filename for the links.")
+		fmt.Println("Ex: ./get-fn-recipes recipeslinks.txt")
+		os.Exit(1)
+	}
 	// Initialize
 	log.Println("Starting up Foodnetwork Website Recipe Downloader v0.1")
 	targetLinks := loadFileLines(os.Args[1])
