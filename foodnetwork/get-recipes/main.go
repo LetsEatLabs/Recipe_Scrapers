@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -55,6 +56,20 @@ func hashString(str string) string {
 	return stringHash
 }
 
+// Returns a string with only letters and numbers
+func cleanString(s string) string {
+	reg, err := regexp.Compile("[^a-zA-Z0-9 ]+")
+
+	if err != nil {
+		log.Println("Problem with cleaning the string", s, err)
+	}
+
+	cleanString := reg.ReplaceAllString(s, "")
+	cleanString = strings.TrimSpace(cleanString)
+
+	return cleanString
+}
+
 // Takes a URL and returns a goquery document object
 func getUrlContent(url string) *goquery.Document {
 
@@ -70,7 +85,7 @@ func getUrlContent(url string) *goquery.Document {
 	// Turn the raw HTTP response from the site into a goquery response object
 	document, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		log.Println("There was an error loading the HTTP body", err)
+		log.Println("There was an error loading the HTTP body for URL", url, err)
 	}
 
 	return document
@@ -83,15 +98,31 @@ func getUrlContent(url string) *goquery.Document {
 
 // Get the title of the recipe
 func getRecipeTitle(doc *goquery.Document) string {
-	title := doc.Find("span[class=o-AssetTitle__a-HeadlineText]").Text()
+	title := doc.Find("span[class=o-AssetTitle__a-HeadlineText]").First().Text()
+	title = strings.TrimSpace(title)
+	title = cleanString(title)
 	return title
 }
 
 // Get the author of the recipe
 func getRecipeAuthor(doc *goquery.Document) string {
-	name := doc.Find("span[class=o-Attribution__a-Name] a").Text()
-	fmt.Println(name)
+	name := doc.Find("span[class=o-Attribution__a-Name] a").First().Text()
+	name = cleanString(name)
 	return name
+}
+
+// Get the description of the recipe
+func getRecipeDescription(doc *goquery.Document) string {
+	description := doc.Find("div[class=o-AssetDescription__a-Description]").First().Text()
+	description = strings.TrimSpace(description)
+	return description
+}
+
+// Get the level of the recipe
+func getRecipeLevel(doc *goquery.Document) string {
+	level := doc.Find("ul[class=o-RecipeInfo__m-Level] span[class=o-RecipeInfo__a-Description]").First().Text()
+	level = strings.TrimSpace(level)
+	return level
 }
 
 // Takes in a pointer to an empty Recipe struct
@@ -110,6 +141,10 @@ func collectRecipe(recipeObj *Recipe, url string) *Recipe {
 	// Get recipe title, author, etc
 	recipeObj.title = getRecipeTitle(doc)
 	recipeObj.author = getRecipeAuthor(doc)
+	recipeObj.description = getRecipeDescription(doc)
+	recipeObj.level = getRecipeLevel(doc)
+
+	log.Printf("Successfully collected recipe %s (%s)", recipeObj.title, recipeObj.id)
 
 	return recipeObj
 
@@ -142,6 +177,8 @@ func main() {
 		recipe := collectRecipe(newRecipe, url)
 
 		fmt.Println(recipe)
+
+		os.Exit(0)
 
 
 	}
