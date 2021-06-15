@@ -12,7 +12,10 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -30,9 +33,22 @@ type Recipe struct {
 	inactiveTime int
 	cookTime int
 	yield string
-	ingredients string
-	directions string
+	ingredients []string
+	directions []string
 }
+
+//
+// Simple constants to control speed if you get rate limited
+//
+
+// How many websites to download at a time
+var BATCHSIZE = 50
+// Number of seconds to sleep between batches
+const SLEEPINTERVAL = 1
+
+//
+// Functions for loading strings, manipulating strings, data, etc.
+//
 
 // Load all lines from a file into a []string. and returns []string
 func loadFileLines(filename string) []string {
@@ -69,6 +85,65 @@ func cleanString(s string) string {
 
 	return cleanString
 }
+
+// Extracts string time to time and returns an int value - ex: 1hr 55min -> 115
+func extractStringTime(time string) int {
+	times := strings.Split(time, " ")
+	totalMinutes := 0
+
+	// If there are no items in the slice, return -1
+	if len(times) < 1 {
+		log.Println("Invalid time string - of 0 length", times)
+		return -1
+	}
+
+	// If there is only a number, return that number
+	if len(times) == 1 {
+		rtrTime, err := strconv.Atoi(times[0])
+		if err != nil {
+			log.Println("Something went wrong converting the time string", times, err)
+			return -1
+		}
+		return rtrTime
+	}
+
+	if len(times) % 2 != 0 {
+		log.Println("Invalid time string - uneven length greater than 1:", times)
+		return -1
+	}
+
+	for s := range times {
+
+		if s == len(times) - 1 {
+			continue
+		}
+
+		if times[s+1] == "hr" {
+			hours, err := strconv.Atoi(times[s])
+			if err != nil {
+				log.Println("Cannot convert hours to minutes", hours, err)
+			}
+
+			totalMinutes += hours * 60
+		}
+
+		if times[s+1] == "min" {
+			minutes, err := strconv.Atoi(times[s])
+			if err != nil {
+				log.Println("Cannot convert minutes to minutes", minutes, err)
+			}
+
+			totalMinutes += minutes
+		}
+		continue
+	}
+
+	return totalMinutes
+}
+
+//
+// Fetching the HTML
+//
 
 // Takes a URL and returns a goquery document object
 func getUrlContent(url string) *goquery.Document {
@@ -125,6 +200,102 @@ func getRecipeLevel(doc *goquery.Document) string {
 	return level
 }
 
+// Get the recipie's total time
+func getRecipeTotalTime(doc *goquery.Document) string {
+	time := doc.Find("ul[class=o-RecipeInfo__m-Level]").First().Text()
+	time = strings.TrimSpace(time) // It returns nothing if we do not call this here... why?
+	timeSplit := strings.Split(time, "\n")
+	time = timeSplit[len(timeSplit)-1]
+	time = strings.TrimSpace(time)
+	return time
+}
+
+// Grabs all of the Prep/Inactive/Cook times for the recipe since they are all
+// In one ul element. Returns prepTime, inactiveTime, cookTime as strings
+func getRecipeOtherTime(doc *goquery.Document) (string, string, string) {
+
+	times := []string{}
+	prepTime := ""
+	inactiveTime := ""
+	cookTime := ""
+	
+	doc.Find("ul[class=o-RecipeInfo__m-Time] li").Each(func(index int, element *goquery.Selection) {
+		time := strings.TrimSpace(element.Text())
+
+		// This is needed because between the label and time value on the page there is
+		// one new line and 10 spaces of whitespace
+		time = strings.ReplaceAll(time, "           ", "")
+		time = strings.ReplaceAll(time, "\n", "")
+
+		times = append(times, time)
+	})
+	
+	for t := range times {
+		splitLine := strings.Split(times[t], ":")
+
+		if splitLine[0] == "Prep" {
+			prepTime = splitLine[1]
+		}
+
+		if splitLine[0] == "Inactive" {
+			inactiveTime = splitLine[1]
+		}
+
+		if splitLine[0] == "Cook" {
+			cookTime = splitLine[1]
+		}
+	}
+
+	return prepTime, inactiveTime, cookTime
+}
+
+// Gets the yeild and returns it as a string
+func getRecipeYeild(doc *goquery.Document) string {
+	yield := doc.Find("ul[class=o-RecipeInfo__m-Yield] li span[class=o-RecipeInfo__a-Description]").First().Text()
+	yield = strings.TrimSpace(yield)
+	return yield
+}
+
+// Gets the recipe ingredients and returns them as an array of (large) strings
+func getRecipeIngredients(doc *goquery.Document) []string {
+
+	ingredients := []string{}
+
+	doc.Find("div[class=o-Ingredients__m-Body] p").Each(func(index int, element *goquery.Selection) {
+		ingredient := strings.TrimSpace(element.Text())
+		ingredients = append(ingredients, ingredient)
+	
+	})
+
+	if len(ingredients) < 1 {
+		ingredients = []string{""}
+		return ingredients
+	}
+
+	// If we grab the select item, just remove it from the slice
+	if ingredients[0] == "Deselect All" || ingredients[0] == "Select All" {
+		ingredients = ingredients[1:]
+	}
+	return ingredients
+}
+
+// Gets the recipe directions and returns them as an array of (large) strings
+func getRecipeDirections(doc *goquery.Document) []string {
+
+	directions := []string{}
+
+	doc.Find("li[class=o-Method__m-Step]").Each(func(index int, element *goquery.Selection) {
+		direction := strings.TrimSpace(element.Text())
+		directions = append(directions, direction)
+	
+	})
+	return directions
+}
+
+//
+// Collecting, storing, writing the recipes, etc.
+//
+
 // Takes in a pointer to an empty Recipe struct
 // And fills out every value.
 func collectRecipe(recipeObj *Recipe, url string) *Recipe {
@@ -144,11 +315,95 @@ func collectRecipe(recipeObj *Recipe, url string) *Recipe {
 	recipeObj.description = getRecipeDescription(doc)
 	recipeObj.level = getRecipeLevel(doc)
 
+	// Get times
+	recipeObj.totalTime = extractStringTime(getRecipeTotalTime(doc))
+
+	prep, inactive, cook := getRecipeOtherTime(doc)
+	recipeObj.prepTime = extractStringTime(prep)
+	recipeObj.inactiveTime = extractStringTime(inactive)
+	recipeObj.cookTime = extractStringTime(cook)
+
+	// Yeild
+	recipeObj.yield = getRecipeYeild(doc)
+
+	// Ingredients
+	recipeObj.ingredients = getRecipeIngredients(doc)
+
+	// Directions
+	recipeObj.directions = getRecipeDirections(doc)
+
 	log.Printf("Successfully collected recipe %s (%s)", recipeObj.title, recipeObj.id)
 
 	return recipeObj
 
 }
+
+
+//
+// Main type of goroutine that will handle each recipe
+//
+
+// Main goroutine that will handle each recipe. Will take in the recipe object
+// and will send it to the recipe channel when done.
+func recipeRoutine(recipeObj *Recipe, url string, wg *sync.WaitGroup, c chan Recipe) {
+	defer wg.Done()
+
+	recipe := collectRecipe(recipeObj, url)
+	c <- *recipe
+}
+
+// Routine for writing to the file. Only one is spun up so as to avoid using a
+// MutEx for a file.
+func writerRoutine(c chan Recipe) {
+
+	// First let us check if the file exists
+	if _, err := os.Stat("./recipes.tsv"); os.IsNotExist(err) {
+
+		file, err := os.Create("./recipes.tsv")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		file.WriteString("id\turl\ttitle\tauthor\tdescription\tlevel\ttotalTime\tprepTime\tinactiveTime\tcookTime\tyield\tingredients\tdirections\n")
+	  }
+
+	// If the file doesn't exist, create it, or append to the file
+	f, err := os.OpenFile("./recipes.tsv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+	if err != nil {
+		log.Fatal("Error trying to open the output file", err)
+	}
+
+	for {
+		select {
+		case recipe := <- c:
+			// Convert the ingredients and directions into strings
+			ingredients := strings.Join(recipe.ingredients, "__")
+			directions := strings.Join(recipe.directions, "__")
+
+			writeString := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n",  recipe.id,
+																					recipe.url,
+																					recipe.title,
+																					recipe.author,
+																					recipe.description,
+																					recipe.level,
+																					recipe.totalTime,
+																					recipe.prepTime,
+																					recipe.inactiveTime,
+																					recipe.cookTime,
+																					recipe.yield,
+																					ingredients,
+																					directions)
+
+			f.WriteString(writeString)
+
+		default:
+			log.Println("No recipes in channel, waiting 2 seconds.")
+			time.Sleep(2 * time.Second)
+		}
+	} 
+}
+
 
 //
 // Main
@@ -162,11 +417,24 @@ func main() {
 		fmt.Println("Ex: ./get-fn-recipes recipeslinks.txt")
 		os.Exit(1)
 	}
+
 	// Initialize
 	log.Println("Starting up Foodnetwork Website Recipe Downloader v0.1")
 	targetLinks := loadFileLines(os.Args[1])
 	log.Println(fmt.Sprintf("Loaded a total of %d links from file %s", len(targetLinks), os.Args[1]))
 
+	// Make a channel for our recipes between downloaders and the writer
+	c := make(chan Recipe, 8)
+
+	// Start the writer
+	go writerRoutine(c)
+
+	// Set up Synchronization for the recipe routines
+	var wg sync.WaitGroup;
+	wg.Add(len(targetLinks))
+
+	// Iterate over all links in the given file, starting a goroutine for each one
+	counter := 0
 	for line := range targetLinks {
 		newRecipe := &Recipe{}
 
@@ -174,13 +442,24 @@ func main() {
 		url := strings.ReplaceAll(targetLinks[line], "\r", "")
 		url = fmt.Sprintf("https://%s", url)
 		
-		recipe := collectRecipe(newRecipe, url)
+		go recipeRoutine(newRecipe, url, &wg, c)
+		counter += 1
 
-		fmt.Println(recipe)
-
-		os.Exit(0)
-
-
+		if counter >= BATCHSIZE {
+			log.Println("Pausing for batch.")
+			time.Sleep(SLEEPINTERVAL * time.Second)
+			counter = 0
+		}
 	}
 
+	// Wait until all goroutines using wg are done.
+	wg.Wait()
+
+	log.Println("All recipe routines have finished. Waiting 5 seconds for writer routine.")
+	time.Sleep(5 * time.Second)
+	log.Println("Closing recipe routine channel.")
+	close(c)
+
+	// Indicate to the user that we are done and are going to take a nap now.
+	log.Println("All recipes written to disk. Shutting down.")
 }
