@@ -276,6 +276,7 @@ func getRecipeIngredients(doc *goquery.Document) []string {
 	if ingredients[0] == "Deselect All" || ingredients[0] == "Select All" {
 		ingredients = ingredients[1:]
 	}
+
 	return ingredients
 }
 
@@ -348,8 +349,14 @@ func collectRecipe(recipeObj *Recipe, url string) *Recipe {
 func recipeRoutine(recipeObj *Recipe, url string, wg *sync.WaitGroup, c chan Recipe) {
 	defer wg.Done()
 
-	recipe := collectRecipe(recipeObj, url)
-	c <- *recipe
+	// If the URL is invalid, then let the user know and continue
+	if strings.HasPrefix(url, "https://www") {
+		recipe := collectRecipe(recipeObj, url)
+		c <- *recipe
+	} else {
+		log.Println("Invalid URL given to routine, ignoring:", url)
+	}
+	
 }
 
 // Routine for writing to the file. Only one is spun up so as to avoid using a
@@ -378,8 +385,8 @@ func writerRoutine(c chan Recipe) {
 		select {
 		case recipe := <- c:
 			// Convert the ingredients and directions into strings
-			ingredients := strings.Join(recipe.ingredients, "__")
-			directions := strings.Join(recipe.directions, "__")
+			ingredients := strings.ReplaceAll(strings.Join(recipe.ingredients, "__"), "\n", "")
+			directions := strings.ReplaceAll(strings.Join(recipe.directions, "__"), "\n", "")
 
 			writeString := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n",  recipe.id,
 																					recipe.url,
