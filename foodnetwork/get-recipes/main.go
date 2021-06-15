@@ -74,7 +74,7 @@ func hashString(str string) string {
 
 // Returns a string with only letters and numbers
 func cleanString(s string) string {
-	reg, err := regexp.Compile("[^a-zA-Z0-9 ]+")
+	reg, err := regexp.Compile("[^a-zA-Z0-9 -]+")
 
 	if err != nil {
 		log.Println("Problem with cleaning the string", s, err)
